@@ -40,8 +40,27 @@ type Config struct {
 	// is min(MaxOutputTokens, 20000) (default 8000).
 	MaxOutputTokens int
 	// KeepRecent is the number of recent messages AutoCompact always preserves as
-	// the un-summarized tail (default 8). MicroCompact uses its own microKeepRecent.
+	// the un-summarized tail (default 8). MicroCompact uses MicroKeepRecent.
 	KeepRecent int
+	// MicroKeepRecent is how many of the most recent compactable tool results
+	// MicroCompact leaves intact when it clears older ones (default 5, matching
+	// claude-code). Raise it when the agent must keep a longer chain of reads in
+	// view — e.g. a code audit tracing Controller → Service → DAO → Mapper.
+	MicroKeepRecent int
+	// CompactableTools names the tools whose results MicroCompact may clear.
+	// nil uses DefaultCompactableTools; a non-nil empty map disables clearing.
+	CompactableTools map[string]bool
+}
+
+// DefaultCompactableTools is the MicroCompact allow-list used when
+// Config.CompactableTools is nil. Mirrors claude-code COMPACTABLE_TOOLS (file
+// read, shell, grep/glob, web, edit/write); deliberately excludes
+// LS/MultiEdit/NotebookEdit. Callers extending it should copy, not mutate.
+func DefaultCompactableTools() map[string]bool {
+	return map[string]bool{
+		"Read": true, "Bash": true, "Grep": true, "Glob": true,
+		"WebFetch": true, "WebSearch": true, "Edit": true, "Write": true,
+	}
 }
 
 func (c *Config) defaults() {
@@ -54,21 +73,19 @@ func (c *Config) defaults() {
 	if c.KeepRecent == 0 {
 		c.KeepRecent = 8
 	}
-}
-
-// compactableTools — tools whose results MicroCompact may clear. Mirrors
-// claude-code COMPACTABLE_TOOLS (file read, shell, grep/glob, web, edit/write);
-// deliberately excludes LS/MultiEdit/NotebookEdit.
-var compactableTools = map[string]bool{
-	"Read": true, "Bash": true, "Grep": true, "Glob": true,
-	"WebFetch": true, "WebSearch": true, "Edit": true, "Write": true,
+	if c.MicroKeepRecent <= 0 {
+		c.MicroKeepRecent = defaultMicroKeepRecent
+	}
+	if c.CompactableTools == nil {
+		c.CompactableTools = DefaultCompactableTools()
+	}
 }
 
 const (
-	microClearedMessage   = "[Old tool result content cleared]" // == claude-code TIME_BASED_MC_CLEARED_MESSAGE
-	microKeepRecent       = 5                                   // == claude-code KEEP_RECENT (compactable results kept)
-	toolResultGrowthGuess = 15000                               // == claude-code TOOL_RESULT_GROWTH_ESTIMATE
-	maxAutoCompactFails   = 3                                   // == claude-code MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES
+	microClearedMessage    = "[Old tool result content cleared]" // == claude-code TIME_BASED_MC_CLEARED_MESSAGE
+	defaultMicroKeepRecent = 5                                   // == claude-code KEEP_RECENT (compactable results kept)
+	toolResultGrowthGuess  = 15000                               // == claude-code TOOL_RESULT_GROWTH_ESTIMATE
+	maxAutoCompactFails    = 3                                   // == claude-code MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES
 )
 
 // Compactor applies the strategy. Construct with New.
@@ -244,23 +261,24 @@ func lastNNonMarkerStart(msgs []llm.Message, keep int) int {
 // --- MicroCompact: keep the most recent N compactable results, clear the rest ---
 
 // microCompact clears the bodies of all COMPACTABLE tool results except the most
-// recent microKeepRecent, returning the (possibly new) message slice and whether
+// recent cfg.MicroKeepRecent, returning the (possibly new) message slice and whether
 // anything changed. It is non-destructive: a cleared result can be re-read.
 func (c *Compactor) microCompact(msgs []llm.Message) ([]llm.Message, bool) {
 	// Collect compactable tool_use ids in encounter order.
 	var ids []string
 	for _, m := range msgs {
 		for _, b := range m.Content {
-			if b.Type == llm.BlockToolUse && compactableTools[b.Name] {
+			if b.Type == llm.BlockToolUse && c.cfg.CompactableTools[b.Name] {
 				ids = append(ids, b.ID)
 			}
 		}
 	}
-	if len(ids) <= microKeepRecent {
+	keep := c.cfg.MicroKeepRecent
+	if len(ids) <= keep {
 		return msgs, false // nothing old enough to clear
 	}
-	clearSet := make(map[string]bool, len(ids)-microKeepRecent)
-	for _, id := range ids[:len(ids)-microKeepRecent] {
+	clearSet := make(map[string]bool, len(ids)-keep)
+	for _, id := range ids[:len(ids)-keep] {
 		clearSet[id] = true
 	}
 	changed := false

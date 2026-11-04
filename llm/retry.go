@@ -34,6 +34,9 @@ func doStream(ctx context.Context, cfg Config, url string, body []byte, setHeade
 
 		resp, err := cfg.HTTPClient.Do(req)
 		if err == nil && resp.StatusCode == http.StatusOK {
+			if cfg.StreamIdleTimeout > 0 {
+				resp.Body = newIdleTimeoutBody(resp.Body, cfg.StreamIdleTimeout)
+			}
 			return resp, nil
 		}
 

@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -95,7 +96,7 @@ func (l *loop) execOne(use llm.ContentBlock, emitProgress func(tool.ProgressInfo
 	// toolCtx carries the run's MaxDuration deadline, so a tool that overruns the
 	// wall-clock budget is interrupted here (the turn loop then enters wrap-up). During
 	// the wrap-up phase toolCtx is the live parent ctx, so settlement tools run freely.
-	res, err := t.Call(l.toolCtx, input, tc)
+	res, err := callTool(t, l.toolCtx, input, tc)
 	if err != nil {
 		res = tool.Errorf("Error: " + err.Error())
 	}
@@ -130,4 +131,19 @@ func capOutput(tc *tool.ToolContext, res tool.Result) tool.Result {
 		}
 	}
 	return res
+}
+
+// callTool runs t.Call and turns a panic into an error. Tools run on the
+// streaming executor's own goroutines, so an unrecovered panic in any tool —
+// built-in, MCP, custom or host — would take the whole process down, and on
+// resume the agent would replay the same call and crash again. Only the panic
+// value reaches the model (a stack trace is noise in its context); hosts that
+// want stacks in their logs wrap their tools and recover first.
+func callTool(t tool.CoreTool, ctx context.Context, input json.RawMessage, tc *tool.ToolContext) (res tool.Result, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("tool %s panicked: %v", t.Name(), r)
+		}
+	}()
+	return t.Call(ctx, input, tc)
 }

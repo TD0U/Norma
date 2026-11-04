@@ -170,8 +170,8 @@ func TestPreDisabledWindow(t *testing.T) {
 func TestPreBelowMicroThresholdNoOp(t *testing.T) {
 	rs := &recSummarizer{}
 	c := New(Config{ContextWindow: 200000, MaxOutputTokens: 8000}, rs.fn)
-	msgs := manyReadPairs(microKeepRecent + 5)  // has clearable results...
-	out := c.Pre(context.Background(), msgs, 1) // ...but the gate says we're tiny
+	msgs := manyReadPairs(defaultMicroKeepRecent + 5) // has clearable results...
+	out := c.Pre(context.Background(), msgs, 1)       // ...but the gate says we're tiny
 	if boundaryCount(out) != 0 || countCleared(out) != 0 || rs.calls != 0 {
 		t.Fatal("below microThreshold → no micro, no auto")
 	}
@@ -202,7 +202,7 @@ func TestPreMicroOnlyBand(t *testing.T) {
 	rs := &recSummarizer{}
 	// eff=96000, micro=57600, auto=83000, growth=19000 → predictive at tok>77000.
 	c := New(Config{ContextWindow: 100000, MaxOutputTokens: 4000, KeepRecent: 2}, rs.fn)
-	msgs := manyReadPairs(microKeepRecent + 1) // small real size, one clearable
+	msgs := manyReadPairs(defaultMicroKeepRecent + 1) // small real size, one clearable
 	out := c.Pre(context.Background(), msgs, 60000)
 	if rs.calls != 0 || boundaryCount(out) != 0 {
 		t.Fatalf("micro-only band should not autoCompact (calls=%d boundaries=%d)", rs.calls, boundaryCount(out))

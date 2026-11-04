@@ -20,7 +20,7 @@ type anthropicSystemBlock struct {
 type anthropicReq struct {
 	Model         string                 `json:"model"`
 	System        []anthropicSystemBlock `json:"system,omitempty"`
-	Messages      []Message              `json:"messages"`
+	Messages      []anthropicMessage     `json:"messages"`
 	Tools         []anthropicTool        `json:"tools,omitempty"`
 	MaxTokens     int                    `json:"max_tokens"`
 	Temperature   *float64               `json:"temperature,omitempty"`
@@ -31,6 +31,54 @@ type anthropicReq struct {
 }
 
 // anthropicThinking is the "thinking":{"type":"enabled"|"disabled"} switch.
+// anthropicMessage is a Message on the Anthropic wire. Content is raw so a
+// cache breakpoint can be attached to one block without adding a
+// cache_control field to llm.ContentBlock (which every format and the
+// transcript share).
+type anthropicMessage struct {
+	Role    Role              `json:"role"`
+	Content []json.RawMessage `json:"content"`
+}
+
+// toAnthropicMessages marshals msgs, adding cache_control:ephemeral to the last
+// block of the last message when cacheTail is set. The input is not mutated.
+func toAnthropicMessages(msgs []Message, cacheTail bool) ([]anthropicMessage, error) {
+	out := make([]anthropicMessage, len(msgs))
+	for i, m := range msgs {
+		out[i] = anthropicMessage{Role: m.Role, Content: make([]json.RawMessage, len(m.Content))}
+		for j, b := range m.Content {
+			raw, err := json.Marshal(b)
+			if err != nil {
+				return nil, err
+			}
+			out[i].Content[j] = raw
+		}
+	}
+	if !cacheTail || len(out) == 0 {
+		return out, nil
+	}
+	last := &out[len(out)-1]
+	if len(last.Content) == 0 {
+		return out, nil
+	}
+	k := len(last.Content) - 1
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(last.Content[k], &obj); err != nil {
+		return nil, err
+	}
+	// Anthropic rejects cache_control on thinking blocks; leave such a tail alone.
+	if t := string(obj["type"]); t == `"thinking"` || t == `"redacted_thinking"` {
+		return out, nil
+	}
+	obj["cache_control"] = json.RawMessage(`{"type":"ephemeral"}`)
+	raw, err := json.Marshal(obj)
+	if err != nil {
+		return nil, err
+	}
+	last.Content[k] = raw
+	return out, nil
+}
+
 type anthropicThinking struct {
 	Type string `json:"type"`
 }
@@ -62,9 +110,13 @@ func (p *anthropicProvider) buildBody(req CompletionRequest, stream bool) ([]byt
 		thinkingType = req.Thinking
 		thinkingEnabled = req.Thinking == "enabled"
 	}
+	msgs, err := toAnthropicMessages(mergeAdjacentSameRole(filterThinkingBlocks(req.Messages, thinkingEnabled)), p.cfg.CacheMessages)
+	if err != nil {
+		return nil, err
+	}
 	body := anthropicReq{
 		Model:         p.cfg.Model,
-		Messages:      mergeAdjacentSameRole(filterThinkingBlocks(req.Messages, thinkingEnabled)),
+		Messages:      msgs,
 		MaxTokens:     maxTok,
 		Temperature:   req.Temperature,
 		StopSequences: req.Stop,

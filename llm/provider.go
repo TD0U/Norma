@@ -104,6 +104,24 @@ type Config struct {
 	// RateLimit, when set, bounds the request rate shared across every caller of
 	// the built Provider (per-second and/or per-minute). Retries do not count.
 	RateLimit *RateLimit
+	// ResponseHeaderTimeout, when > 0, bounds how long the built-in client waits
+	// for response headers after sending a request (see timeout.go). It does not
+	// bound the streamed body. 0 = no limit. Ignored when the caller supplies its
+	// own HTTPClient — set Transport.ResponseHeaderTimeout there instead.
+	ResponseHeaderTimeout time.Duration
+	// StreamIdleTimeout, when > 0, ends a response whose body produces no bytes
+	// for this long with ErrStreamIdle (see timeout.go). Applies to every format
+	// and to caller-supplied HTTPClients. 0 = no limit. Pick it well above the
+	// provider's longest silent gap (reasoning models may think for a while
+	// before the first token; most gateways send keep-alive pings meanwhile).
+	StreamIdleTimeout time.Duration
+	// CacheMessages, when true, adds an Anthropic prompt-cache breakpoint on the
+	// last content block of the conversation (FormatAnthropic only), on top of
+	// the system-prompt breakpoint at DynamicBoundary. Each request then reads
+	// the whole prior history from cache instead of re-processing it — the main
+	// cost and latency of a long tool-using loop. Off by default; gateways that
+	// reject cache_control on message blocks should leave it off.
+	CacheMessages bool
 
 	// ThinkingType toggles extended/reasoning mode via the request's
 	// "thinking":{"type":...} field, for both formats. "" omits it (provider
@@ -183,7 +201,7 @@ type Provider interface {
 // fall back to standard environment variables and public endpoints.
 func NewProvider(cfg Config) (Provider, error) {
 	if cfg.HTTPClient == nil {
-		client, err := defaultHTTPClient(cfg.Proxy)
+		client, err := defaultHTTPClient(cfg.Proxy, cfg.ResponseHeaderTimeout)
 		if err != nil {
 			return nil, err
 		}
@@ -230,8 +248,11 @@ func NewProvider(cfg Config) (Provider, error) {
 // an empty proxy falls back to the standard *_PROXY environment variables
 // (net/http's ProxyFromEnvironment). The transport is cloned from
 // http.DefaultTransport so it keeps the standard timeouts and connection pool.
-func defaultHTTPClient(proxy string) (*http.Client, error) {
+func defaultHTTPClient(proxy string, headerTimeout time.Duration) (*http.Client, error) {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
+	if headerTimeout > 0 {
+		tr.ResponseHeaderTimeout = headerTimeout
+	}
 	if proxy == "" {
 		tr.Proxy = http.ProxyFromEnvironment
 		return &http.Client{Transport: tr}, nil

@@ -157,12 +157,12 @@ func toolPair(name, id, body string) []llm.Message {
 }
 
 // TestMicroCompactKeepsRecentClearsOld verifies the keep-last-N semantics: with
-// microKeepRecent (5) recent compactable results and older ones beyond that, only
+// defaultMicroKeepRecent (5) recent compactable results and older ones beyond that, only
 // the older results are cleared.
 func TestMicroCompactKeepsRecentClearsOld(t *testing.T) {
 	c := New(Config{ContextWindow: 16000, MaxOutputTokens: 1000}, nil)
 	var msgs []llm.Message
-	total := microKeepRecent + 2 // 2 older than the kept window
+	total := defaultMicroKeepRecent + 2 // 2 older than the kept window
 	for i := 0; i < total; i++ {
 		msgs = append(msgs, toolPair("Read", "r"+strconv.Itoa(i), strings.Repeat("y", 500))...)
 	}
@@ -192,7 +192,7 @@ func TestMicroCompactSkipsNonCompactableTools(t *testing.T) {
 	c := New(Config{ContextWindow: 16000, MaxOutputTokens: 1000}, nil)
 	var msgs []llm.Message
 	msgs = append(msgs, toolPair("Agent", "a0", strings.Repeat("y", 5000))...) // oldest, non-compactable
-	for i := 0; i < microKeepRecent+1; i++ {
+	for i := 0; i < defaultMicroKeepRecent+1; i++ {
 		msgs = append(msgs, toolPair("Read", "r"+strconv.Itoa(i), strings.Repeat("y", 500))...)
 	}
 	out, _ := c.microCompact(msgs)
