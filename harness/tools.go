@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Autumn-27/norma/llm"
-	"github.com/Autumn-27/norma/permission"
-	"github.com/Autumn-27/norma/tool"
+	"github.com/TD0U/Norma/llm"
+	"github.com/TD0U/Norma/permission"
+	"github.com/TD0U/Norma/tool"
 )
 
 // rawInputTool is the optional opt-out from schema validation. Discovered by

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Autumn-27/norma/llm"
-	"github.com/Autumn-27/norma/noa"
-	"github.com/Autumn-27/norma/tool"
+	"github.com/TD0U/Norma/llm"
+	"github.com/TD0U/Norma/noa"
+	"github.com/TD0U/Norma/tool"
 )
 
 // compressedSession returns a session with one real block, plus the history it

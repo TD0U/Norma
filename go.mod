@@ -1,4 +1,4 @@
-module github.com/Autumn-27/norma
+module github.com/TD0U/Norma
 
 go 1.26.3
 

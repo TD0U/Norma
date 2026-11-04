@@ -9,8 +9,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/Autumn-27/norma/llm"
-	"github.com/Autumn-27/norma/permission"
+	"github.com/TD0U/Norma/llm"
+	"github.com/TD0U/Norma/permission"
 )
 
 // ProgressInfo is an incremental progress update emitted during a long tool run.

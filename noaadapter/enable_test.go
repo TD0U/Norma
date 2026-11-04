@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Autumn-27/norma/agentcore"
-	"github.com/Autumn-27/norma/compaction"
-	"github.com/Autumn-27/norma/harness"
-	"github.com/Autumn-27/norma/llm"
-	"github.com/Autumn-27/norma/noa"
-	"github.com/Autumn-27/norma/tool"
+	"github.com/TD0U/Norma/agentcore"
+	"github.com/TD0U/Norma/compaction"
+	"github.com/TD0U/Norma/harness"
+	"github.com/TD0U/Norma/llm"
+	"github.com/TD0U/Norma/noa"
+	"github.com/TD0U/Norma/tool"
 )
 
 func baseOptions() agentcore.Options {

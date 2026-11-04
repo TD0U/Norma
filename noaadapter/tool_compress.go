@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Autumn-27/norma/llm"
-	"github.com/Autumn-27/norma/noa"
-	"github.com/Autumn-27/norma/permission"
-	"github.com/Autumn-27/norma/tool"
+	"github.com/TD0U/Norma/llm"
+	"github.com/TD0U/Norma/noa"
+	"github.com/TD0U/Norma/permission"
+	"github.com/TD0U/Norma/tool"
 )
 
 // newCompressTool builds the one tool noa exposes.

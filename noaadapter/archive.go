@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/Autumn-27/norma/noa"
+	"github.com/TD0U/Norma/noa"
 )
 
 // fileArchiver writes archives under <root>/tier<N>/.
