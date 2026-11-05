@@ -117,3 +117,14 @@ func TestReplaySkipsHTTPError(t *testing.T) {
 		t.Fatalf("err=%v hits=%d", err, hits.Load())
 	}
 }
+
+// The host filter vetoes replaying errors it handles itself.
+func TestReplayFilterVetoes(t *testing.T) {
+	var hits atomic.Int32
+	srv := sequenceServer(t, &hits, frameStart+frameOverld, frameStart+frameBlock+frameText+frameStopped)
+	cfg := replayCfg(srv.URL, 2)
+	cfg.StreamReplayFilter = func(error) bool { return false }
+	if _, err := collectStream(t, cfg); err == nil || hits.Load() != 1 {
+		t.Fatalf("err=%v hits=%d, want the vetoed error after 1 attempt", err, hits.Load())
+	}
+}

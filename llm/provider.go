@@ -136,6 +136,11 @@ type Config struct {
 	// StreamReplayInterval is the wait before each replay; 0 = exponential
 	// (0.5s, 1s, … capped at 8s).
 	StreamReplayInterval time.Duration
+	// StreamReplayFilter, when set, vetoes a replay: return false for errors
+	// that replaying cannot fix (e.g. an in-stream "quota exhausted" frame the
+	// host would rather fail over on). Only consulted for errors the built-in
+	// rules already consider replayable.
+	StreamReplayFilter func(error) bool
 
 	// ThinkingType toggles extended/reasoning mode via the request's
 	// "thinking":{"type":...} field, for both formats. "" omits it (provider
@@ -218,7 +223,7 @@ func NewProvider(cfg Config) (Provider, error) {
 	if err != nil || cfg.StreamReplayRetries <= 0 {
 		return p, err
 	}
-	return &replayProvider{inner: p, retries: cfg.StreamReplayRetries, interval: cfg.StreamReplayInterval}, nil
+	return &replayProvider{inner: p, retries: cfg.StreamReplayRetries, interval: cfg.StreamReplayInterval, filter: cfg.StreamReplayFilter}, nil
 }
 
 func newProvider(cfg Config) (Provider, error) {

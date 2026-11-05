@@ -16,6 +16,7 @@ type replayProvider struct {
 	inner    Provider
 	retries  int
 	interval time.Duration
+	filter   func(error) bool
 }
 
 func (r *replayProvider) Complete(ctx context.Context, req CompletionRequest) (Message, string, Usage, error) {
@@ -49,7 +50,7 @@ func (r *replayProvider) Stream(ctx context.Context, req CompletionRequest) iter
 					return
 				}
 			}
-			if streamErr == nil || committed || attempt >= r.retries || !replayable(ctx, streamErr) {
+			if streamErr == nil || committed || attempt >= r.retries || !replayable(ctx, streamErr) || (r.filter != nil && !r.filter(streamErr)) {
 				for _, p := range pending {
 					if !yield(p, nil) {
 						return
