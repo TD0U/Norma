@@ -28,8 +28,9 @@ type Todo struct {
 // TodoStore holds the current todo list across tool calls. It is safe for
 // concurrent reads; the host can inspect progress via List.
 type TodoStore struct {
-	mu    sync.Mutex
-	items []Todo
+	mu       sync.Mutex
+	items    []Todo
+	onChange func([]Todo)
 }
 
 // NewTodoStore returns an empty store.
@@ -42,10 +43,32 @@ func (s *TodoStore) List() []Todo {
 	return append([]Todo(nil), s.items...)
 }
 
+// Set replaces the list without notifying OnChange. Hosts use it to restore a
+// persisted plan before a run starts.
+func (s *TodoStore) Set(items []Todo) {
+	s.mu.Lock()
+	s.items = append([]Todo(nil), items...)
+	s.mu.Unlock()
+}
+
+// OnChange registers fn to be called (outside the lock) with a snapshot every
+// time the agent rewrites the list through TodoWrite. Hosts use it to persist
+// the plan. A later call replaces the earlier callback; nil clears it.
+func (s *TodoStore) OnChange(fn func([]Todo)) {
+	s.mu.Lock()
+	s.onChange = fn
+	s.mu.Unlock()
+}
+
 func (s *TodoStore) set(items []Todo) {
 	s.mu.Lock()
 	s.items = items
+	fn := s.onChange
+	snap := append([]Todo(nil), items...)
 	s.mu.Unlock()
+	if fn != nil {
+		fn(snap)
+	}
 }
 
 // Tool returns the TodoWrite tool bound to this store. The agent uses it to
