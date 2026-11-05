@@ -126,6 +126,16 @@ type Config struct {
 	// retry decision (see errors.go). Use it to stop retrying an exhausted-quota
 	// 429, which the built-in rule would retry like a rate limit.
 	ErrorClassifier ErrorClassifier
+	// StreamReplayRetries replays a stream that fails mid-way BEFORE any output
+	// reached the caller — an idle timeout, an in-stream error frame such as
+	// overloaded_error, a dropped connection. Nothing was emitted, so replaying
+	// the identical request cannot duplicate text or tool calls. Failures during
+	// establishment are not replayed here (doStream already retried those per
+	// MaxRetries), nor are cancellation or deterministic errors. 0 = off.
+	StreamReplayRetries int
+	// StreamReplayInterval is the wait before each replay; 0 = exponential
+	// (0.5s, 1s, … capped at 8s).
+	StreamReplayInterval time.Duration
 
 	// ThinkingType toggles extended/reasoning mode via the request's
 	// "thinking":{"type":...} field, for both formats. "" omits it (provider
@@ -204,6 +214,14 @@ type Provider interface {
 // NewProvider builds a built-in provider for cfg.Format. Missing APIKey/BaseURL
 // fall back to standard environment variables and public endpoints.
 func NewProvider(cfg Config) (Provider, error) {
+	p, err := newProvider(cfg)
+	if err != nil || cfg.StreamReplayRetries <= 0 {
+		return p, err
+	}
+	return &replayProvider{inner: p, retries: cfg.StreamReplayRetries, interval: cfg.StreamReplayInterval}, nil
+}
+
+func newProvider(cfg Config) (Provider, error) {
 	if cfg.HTTPClient == nil {
 		client, err := defaultHTTPClient(cfg.Proxy, cfg.ResponseHeaderTimeout)
 		if err != nil {
