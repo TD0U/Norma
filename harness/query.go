@@ -55,6 +55,12 @@ type QueryInput struct {
 	// The loop drains its completion notifications into the conversation between
 	// tool turns so the model learns when background work finishes.
 	Tasks *tool.Manager
+	// PendingMessages, when set, is drained at every turn boundary; each string
+	// is appended as a user message before the next model round. Hosts use it
+	// to steer a running agent without blocking a tool call. A message queued
+	// during a turn that would otherwise end the run keeps it going one more
+	// round so the model can act on it.
+	PendingMessages func() []string
 
 	// Todos, when non-nil, enables todo system-reminders: when the model hasn't
 	// used TodoWrite for TodoReminderTurnsSinceWrite turns (and it's been at least
@@ -277,6 +283,25 @@ func (l *loop) record(m llm.Message, u llm.Usage) {
 // injectTaskNotifications drains completion notifications from the background-task
 // manager and appends them to the conversation as a user message, so the model is
 // told when background work finishes. Returns true if any were injected.
+// injectPending appends host-queued messages (QueryInput.PendingMessages) as
+// user messages. Returns true if any were injected.
+func (l *loop) injectPending() bool {
+	if l.in.PendingMessages == nil {
+		return false
+	}
+	injected := false
+	for _, m := range l.in.PendingMessages() {
+		if strings.TrimSpace(m) == "" {
+			continue
+		}
+		msg := llm.UserText(m)
+		l.messages = append(l.messages, msg)
+		l.record(msg, llm.Usage{})
+		injected = true
+	}
+	return injected
+}
+
 func (l *loop) injectTaskNotifications() bool {
 	if l.in.Tasks == nil {
 		return false
@@ -497,6 +522,12 @@ func (l *loop) run() {
 				l.lastContinue = ContinueTaskNotification
 				continue
 			}
+			// A steering message queued during this turn: take another round so the
+			// model can act on it instead of ending the run.
+			if l.injectPending() {
+				l.lastContinue = ContinuePendingMessage
+				continue
+			}
 			// Token budget: nudge to keep working until ~90% / diminishing returns.
 			if l.in.TokenBudget > 0 && l.checkBudgetContinue() {
 				l.lastContinue = ContinueTokenBudget
@@ -521,6 +552,9 @@ func (l *loop) run() {
 		// Surface any background-task completions that landed during this turn so
 		// the next model round sees them alongside the tool results.
 		l.injectTaskNotifications()
+		// Host-queued steering lands right after the tool results, before the
+		// next model round.
+		l.injectPending()
 		// Parent-ctx cancellation (pause / planner kill / shutdown) → real abort, no wrap-up.
 		if l.ctx.Err() != nil {
 			l.finish(ReasonAbortedTools, l.ctx.Err(), "")

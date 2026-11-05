@@ -133,6 +133,10 @@ type Options struct {
 	// Todos, when non-nil, adds the TodoWrite tool backed by this store, letting
 	// the host observe the agent's plan/progress via Todos.List().
 	Todos *tool.TodoStore
+	// PendingMessages is drained at every turn boundary and each string is
+	// appended as a user message before the next model round — the way to
+	// steer a running session. See harness.QueryInput.PendingMessages.
+	PendingMessages func() []string
 	// AskUser, when non-nil, adds the AskUserQuestion tool so the agent can pause
 	// a long task to ask the user a structured multiple-choice question.
 	AskUser tool.AskUserFunc
@@ -506,6 +510,7 @@ func (s *Session) Prompt(ctx context.Context, input string) iter.Seq2[harness.Ev
 		MaxConcurrency:     s.opts.MaxConcurrency,
 		WorkingDir:         s.opts.WorkingDir,
 		Todos:              s.opts.Todos,
+		PendingMessages:    s.opts.PendingMessages,
 		ToolOutputDir:      s.opts.ToolOutputDir,
 		MaxToolOutputChars: s.opts.MaxToolOutputChars,
 		Tasks:              s.tasks,
