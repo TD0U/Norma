@@ -122,6 +122,10 @@ type Config struct {
 	// cost and latency of a long tool-using loop. Off by default; gateways that
 	// reject cache_control on message blocks should leave it off.
 	CacheMessages bool
+	// ErrorClassifier, when set, classifies each non-200 response before the
+	// retry decision (see errors.go). Use it to stop retrying an exhausted-quota
+	// 429, which the built-in rule would retry like a rate limit.
+	ErrorClassifier ErrorClassifier
 
 	// ThinkingType toggles extended/reasoning mode via the request's
 	// "thinking":{"type":...} field, for both formats. "" omits it (provider

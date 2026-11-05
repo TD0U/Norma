@@ -235,11 +235,11 @@ func parseResponsesFrame(event, data string) (StreamEvent, bool, error) {
 		}
 		return ev, true, nil
 	case "response.failed", "error":
-		msg := "stream error"
+		se := &StreamError{Format: "openai-responses", Message: "stream error"}
 		if f.Error != nil {
-			msg = f.Error.Message
+			se.Message = f.Error.Message
 		}
-		return StreamEvent{}, false, fmt.Errorf("openai-responses: %s", msg)
+		return StreamEvent{}, false, se
 	}
 	return StreamEvent{}, false, nil
 }

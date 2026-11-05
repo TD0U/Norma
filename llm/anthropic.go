@@ -305,6 +305,7 @@ func parseAnthropicFrame(data string) (StreamEvent, bool, error) {
 			Usage *anthropicUsage `json:"usage"`
 		} `json:"message"`
 		Error *struct {
+			Type    string `json:"type"`
 			Message string `json:"message"`
 		} `json:"error"`
 	}
@@ -357,11 +358,11 @@ func parseAnthropicFrame(data string) (StreamEvent, bool, error) {
 	case "message_stop":
 		return StreamEvent{Type: SEMessageStop}, true, nil
 	case "error":
-		msg := "stream error"
+		se := &StreamError{Format: "anthropic", Message: "stream error"}
 		if f.Error != nil {
-			msg = f.Error.Message
+			se.Type, se.Message = f.Error.Type, f.Error.Message
 		}
-		return StreamEvent{}, false, fmt.Errorf("anthropic: %s", msg)
+		return StreamEvent{}, false, se
 	}
 	return StreamEvent{}, false, nil
 }

@@ -3,7 +3,6 @@ package llm
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -17,7 +16,10 @@ import (
 // partially-streamed assistant output). A mid-stream drop is the caller's to
 // surface. Context cancellation is never retried and interrupts the backoff.
 // Count comes from cfg.retries(), the wait between attempts from
-// cfg.retryDelay() (exponential by default, fixed when Config.RetryInterval is set).
+// cfg.retryDelay() (exponential by default, fixed when Config.RetryInterval is
+// set), lengthened to a server Retry-After when that asks for more. A final
+// non-200 is returned as *HTTPError; Config.ErrorClassifier may override the
+// retry decision per response.
 func doStream(ctx context.Context, cfg Config, url string, body []byte, setHeaders func(*http.Request), errPrefix string) (*http.Response, error) {
 	// Rate limit once per logical request (outside the retry loop, so retries do
 	// not consume additional tokens). Shared across all callers of this provider.
@@ -41,24 +43,44 @@ func doStream(ctx context.Context, cfg Config, url string, body []byte, setHeade
 		}
 
 		retryable := false
-		switch {
-		case err != nil:
+		var herr *HTTPError
+		if err != nil {
 			retryable = ctx.Err() == nil // transient network error (not cancellation)
-		case isRetryableStatus(resp.StatusCode):
-			retryable = true
+		} else {
+			data, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			herr = &HTTPError{
+				Format:     errPrefix,
+				StatusCode: resp.StatusCode,
+				Body:       strings.TrimSpace(string(data)),
+				Header:     resp.Header,
+				RetryAfter: parseRetryAfter(resp.Header, time.Now()),
+			}
+			if cfg.ErrorClassifier != nil {
+				herr.Class = cfg.ErrorClassifier(herr)
+			}
+			switch herr.Class {
+			case ClassRetryable:
+				retryable = true
+			case ClassFatal, ClassQuotaExhausted:
+				retryable = false
+			default:
+				retryable = isRetryableStatus(resp.StatusCode)
+			}
 		}
 		if attempt >= retries || !retryable {
 			if err != nil {
 				return nil, err
 			}
-			data, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			return nil, fmt.Errorf("%s: status %d: %s", errPrefix, resp.StatusCode, strings.TrimSpace(string(data)))
+			return nil, herr
 		}
-		if resp != nil {
-			resp.Body.Close()
+		delay := cfg.retryDelay(attempt)
+		// Honour the server's Retry-After when it asks for longer than our
+		// ladder (capped by maxRetryAfter, see parseRetryAfter).
+		if herr != nil && herr.RetryAfter > delay {
+			delay = herr.RetryAfter
 		}
-		if !backoffSleep(ctx, cfg.retryDelay(attempt)) {
+		if !backoffSleep(ctx, delay) {
 			return nil, ctx.Err() // context cancelled during backoff
 		}
 	}
